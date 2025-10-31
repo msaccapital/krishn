@@ -12,6 +12,7 @@ import shutil
 import uuid
 from PyPDF2 import PdfReader
 import time
+import numpy as np
 
 # Create FastAPI app
 app = FastAPI(title="Multi-PDF Krishn API", version="1.0")
@@ -50,15 +51,22 @@ class KrishnMultiPDF:
         self.tokenizer = None
         self.pipeline = None
         self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
-        self.load_models()
+        self.is_models_loaded = False
     
     def load_models(self):
         """Load AI models once at startup"""
+        if self.is_models_loaded:
+            return True
+            
         print("🚀 Loading Mistral 7B...")
         try:
             model_name = "mistralai/Mistral-7B-Instruct-v0.2"
+            
+            # Load tokenizer
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             self.tokenizer.pad_token = self.tokenizer.eos_token
+            
+            # Load model with 4-bit quantization for memory efficiency
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 torch_dtype=torch.float16,
@@ -66,6 +74,8 @@ class KrishnMultiPDF:
                 load_in_4bit=True,
                 trust_remote_code=True
             )
+            
+            # Create pipeline
             self.pipeline = pipeline(
                 "text-generation",
                 model=self.model,
@@ -73,9 +83,14 @@ class KrishnMultiPDF:
                 torch_dtype=torch.float16,
                 device_map="auto"
             )
+            
+            self.is_models_loaded = True
             print("✅ AI Models loaded successfully!")
+            return True
+            
         except Exception as e:
             print(f"❌ Error loading models: {e}")
+            return False
     
     def process_pdf(self, file_path: str, session_id: str):
         """Process uploaded PDF and create vector database"""
@@ -88,8 +103,10 @@ class KrishnMultiPDF:
             for page_num, page in enumerate(reader.pages):
                 text = page.extract_text()
                 if text and text.strip():
+                    # Clean and chunk the text
+                    cleaned_text = ' '.join(text.split())
                     chunks.append({
-                        'text': text.strip(),
+                        'text': cleaned_text[:1000],  # Limit text length
                         'source': os.path.basename(file_path),
                         'page_number': page_num + 1
                     })
@@ -101,9 +118,15 @@ class KrishnMultiPDF:
                 print(f"🔍 Creating embeddings for {len(texts)} chunks...")
                 embeddings = self.embedder.encode(texts)
                 
+                # Convert to numpy array if needed
+                if isinstance(embeddings, list):
+                    embeddings = np.array(embeddings)
+                
                 # Create FAISS index
                 dimension = embeddings.shape[1]
                 index = faiss.IndexFlatIP(dimension)
+                
+                # Normalize embeddings for cosine similarity
                 faiss.normalize_L2(embeddings)
                 index.add(embeddings)
                 
@@ -111,7 +134,8 @@ class KrishnMultiPDF:
                 self.sessions[session_id] = {
                     'index': index,
                     'chunks': chunks,
-                    'files': [os.path.basename(file_path)]
+                    'files': [os.path.basename(file_path)],
+                    'embeddings': embeddings
                 }
                 
                 print(f"✅ PDF processing complete: {len(chunks)} chunks indexed")
@@ -131,8 +155,13 @@ class KrishnMultiPDF:
         
         session_data = self.sessions[session_id]
         query_embedding = self.embedder.encode([query])
+        
+        # Ensure query_embedding is numpy array and normalized
+        if not isinstance(query_embedding, np.ndarray):
+            query_embedding = np.array(query_embedding)
         faiss.normalize_L2(query_embedding)
         
+        # Search
         scores, indices = session_data['index'].search(query_embedding, top_k)
         
         results = []
@@ -152,6 +181,14 @@ class KrishnMultiPDF:
         """Generate answer using relevant PDF content"""
         start_time = time.time()
         
+        if not self.is_models_loaded:
+            return {
+                "answer": "AI models are still loading. Please try again in a moment.",
+                "sources": [],
+                "response_time": time.time() - start_time,
+                "confidence": 0.0
+            }
+        
         # Search for relevant content
         relevant_chunks = self.search_documents(session_id, question, top_k=3)
         
@@ -165,7 +202,7 @@ class KrishnMultiPDF:
         
         # Build context from found chunks
         context = "\n\n".join([
-            f"From {chunk['source']} page {chunk['page_number']}: {chunk['text'][:500]}..."
+            f"From {chunk['source']} page {chunk['page_number']}: {chunk['text']}"
             for chunk in relevant_chunks
         ])
         
@@ -187,7 +224,8 @@ ANSWER: [/INST]"""
                 do_sample=True,
                 temperature=0.3,
                 top_p=0.9,
-                return_full_text=False
+                return_full_text=False,
+                pad_token_id=self.tokenizer.eos_token_id
             )
             
             answer = response[0]['generated_text'].strip()
@@ -213,6 +251,12 @@ ANSWER: [/INST]"""
 # Initialize the multi-PDF system
 krishn_system = KrishnMultiPDF()
 
+@app.on_event("startup")
+async def startup_event():
+    """Load models when the application starts"""
+    print("🔄 Starting up Krishn AI...")
+    krishn_system.load_models()
+
 @app.get("/")
 async def root():
     return {"message": "🚀 Multi-PDF Krishn API is running!"}
@@ -221,6 +265,9 @@ async def root():
 async def upload_pdf(file: UploadFile = File(...)):
     """Handle PDF upload and processing"""
     try:
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
         # Create session ID
         session_id = str(uuid.uuid4())
         
@@ -236,7 +283,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         os.unlink(temp_path)
         
         if pages_processed == 0:
-            raise HTTPException(status_code=400, detail="Could not process PDF - no text found")
+            raise HTTPException(status_code=400, detail="Could not process PDF - no text found or PDF is corrupted")
         
         return UploadResponse(
             session_id=session_id,
@@ -278,7 +325,7 @@ async def health_check():
     return {
         "status": "healthy",
         "sessions_active": len(krishn_system.sessions),
-        "models_loaded": krishn_system.pipeline is not None
+        "models_loaded": krishn_system.is_models_loaded
     }
 
 if __name__ == "__main__":
