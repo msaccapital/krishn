@@ -10,4 +10,5 @@ pypdf2==3.0.1
 python-multipart==0.0.6
 pydantic==2.4.2
 numpy==1.24.3
-tokenizers==0.13.3
+tokenizers==0.15.0
+
