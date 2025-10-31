@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-PDF Krishn AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 900px;
+            height: 95vh;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .chat-header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .chat-header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .upload-section {
+            padding: 20px;
+            border-bottom: 1px solid #e1e5e9;
+            background: #f8f9fa;
+        }
+
+        .upload-area {
+            border: 2px dashed #007bff;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: background 0.3s;
+            background: white;
+        }
+
+        .upload-area:hover {
+            background: #e3f2fd;
+        }
+
+        .upload-area.dragover {
+            background: #bbdefb;
+            border-color: #0056b3;
+        }
+
+        .upload-area h3 {
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+
+        .upload-area p {
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .upload-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .upload-button:hover {
+            background: #0056b3;
+        }
+
+        .session-info {
+            background: #e8f5e8;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 14px;
+            border-left: 4px solid #28a745;
+            display: none;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: #007bff;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            color: #333;
+            border: 1px solid #e1e5e9;
+            border-bottom-left-radius: 4px;
+        }
+
+        .sources {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 3px solid #007bff;
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            border-top: 1px solid #e1e5e9;
+            background: white;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        #chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #e1e5e9;
+            border-radius: 12px;
+            resize: none;
+            font-family: inherit;
+            font-size: 14px;
+            max-height: 120px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        #chat-input:focus {
+            border-color: #007bff;
+        }
+
+        #chat-input:disabled {
+            background: #f8f9fa;
+            color: #6c757d;
+        }
+
+        #send-button {
+            padding: 12px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        #send-button:hover:not(:disabled) {
+            background: #0056b3;
+        }
+
+        #send-button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 18px;
+            border: 1px solid #e1e5e9;
+            margin-bottom: 20px;
+            align-items: center;
+            gap: 8px;
+            max-width: 200px;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background: #999;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-4px); }
+        }
+
+        .confidence-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #28a745;
+            color: white;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+
+        .file-input {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🚀 Multi-PDF Krishn AI</h1>
+            <p>Upload PDFs and ask questions about them</p>
+        </div>
+        
+        <!-- File Upload Section -->
+        <div class="upload-section">
+            <div class="upload-area" id="upload-area">
+                <h3>📁 Upload PDF</h3>
+                <p>Drag & drop a PDF file or click to browse</p>
+                <input type="file" id="file-input" class="file-input" accept=".pdf">
+                <button class="upload-button" onclick="document.getElementById('file-input').click()">Choose PDF File</button>
+            </div>
+            <div id="session-info" class="session-info"></div>
+        </div>
+        
+        <div class="chat-messages" id="chat-messages">
+            <div class="message assistant">
+                <div class="message-content">
+                    <strong>Welcome to Multi-PDF Krishn AI! 🚀</strong><br><br>
+                    To get started:<br>
+                    1. Upload a PDF file using the upload area above<br>
+                    2. Wait for it to process (usually 10-30 seconds)<br>
+                    3. Start asking questions about your document!<br><br>
+                    I'll provide answers with page references and confidence scores.
+                </div>
+            </div>
+        </div>
+
+        <div class="typing-indicator" id="typing-indicator">
+            <div class="typing-dots">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+            <span>Krishn is thinking...</span>
+        </div>
+
+        <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+                <textarea 
+                    id="chat-input" 
+                    placeholder="Please upload a PDF first to ask questions..." 
+                    rows="1"
+                    disabled
+                ></textarea>
+                <button id="send-button" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class MultiPDFKrishnChat {
+            constructor() {
+                this.apiUrl = 'https://your-krishn-api.onrender.com'; // We'll update this later
+                this.sessionId = null;
+                this.currentFile = null;
+                
+                this.initializeApp();
+            }
+            
+            initializeApp() {
+                this.setupFileUpload();
+                this.setupChat();
+            }
+            
+            setupFileUpload() {
+                const uploadArea = document.getElementById('upload-area');
+                const fileInput = document.getElementById('file-input');
+                
+                fileInput.addEventListener('change', (e) => {
+                    if (e.target.files[0]) {
+                        this.handleFileUpload(e.target.files[0]);
+                    }
+                });
+                
+                uploadArea.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.add('dragover');
+                });
+                
+                uploadArea.addEventListener('dragleave', () => {
+                    uploadArea.classList.remove('dragover');
+                });
+                
+                uploadArea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.remove('dragover');
+                    if (e.dataTransfer.files[0]) {
+                        this.handleFileUpload(e.dataTransfer.files[0]);
+                    }
+                });
+            }
+            
+            async handleFileUpload(file) {
+                if (file.type !== 'application/pdf') {
+                    alert('Please upload a PDF file');
+                    return;
+                }
+                
+                this.addMessage('assistant', `📤 Uploading "${file.name}"...`);
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                try {
+                    const response = await fetch(`${this.apiUrl}/upload-pdf`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        this.sessionId = data.session_id;
+                        this.currentFile = data.file_name;
+                        
+                        this.updateSessionInfo(data);
+                        this.enableChat();
+                        this.addMessage('assistant', 
+                            `✅ Successfully processed "${data.file_name}"!<br>
+                            📑 ${data.pages_processed} pages indexed<br>
+                            💬 You can now ask questions about this document!`);
+                    } else {
+                        throw new Error(data.detail || 'Upload failed');
+                    }
+                } catch (error) {
+                    this.addMessage('assistant', `❌ Error uploading file: ${error.message}`);
+                }
+            }
+            
+            updateSessionInfo(data) {
+                const sessionInfo = document.getElementById('session-info');
+                sessionInfo.innerHTML = `
+                    <strong>📄 Active Document:</strong> ${data.file_name}<br>
+                    <strong>📑 Pages Processed:</strong> ${data.pages_processed}<br>
+                    <strong>🔑 Session ID:</strong> ${this.sessionId.substring(0, 8)}...
+                `;
+                sessionInfo.style.display = 'block';
+            }
+            
+            enableChat() {
+                document.getElementById('chat-input').disabled = false;
+                document.getElementById('chat-input').placeholder = "Ask questions about your uploaded PDF...";
+                document.getElementById('send-button').disabled = false;
+            }
+            
+            setupChat() {
+                const chatInput = document.getElementById('chat-input');
+                const sendButton = document.getElementById('send-button');
+                
+                sendButton.addEventListener('click', () => this.sendMessage());
+                
+                chatInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.sendMessage();
+                    }
+                });
+                
+                chatInput.addEventListener('input', () => this.autoResizeTextarea());
+            }
+            
+            autoResizeTextarea() {
+                const chatInput = document.getElementById('chat-input');
+                chatInput.style.height = 'auto';
+                chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+            }
+            
+            async sendMessage() {
+                if (!this.sessionId) {
+                    this.addMessage('assistant', 'Please upload a PDF file first.');
+                    return;
+                }
+                
+                const message = document.getElementById('chat-input').value.trim();
+                if (!message) return;
+
+                this.addMessage('user', message);
+                document.getElementById('chat-input').value = '';
+                this.autoResizeTextarea();
+                this.setLoading(true);
+
+                try {
+                    const response = await fetch(`${this.apiUrl}/chat`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: message,
+                            session_id: this.sessionId
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+
+                    const data = await response.json();
+                    
+                    let answer = data.answer;
+                    if (data.sources && data.sources.length > 0) {
+                        answer += `<div class="sources"><strong>📚 Sources:</strong><br>`;
+                        data.sources.forEach(source => {
+                            answer += `• ${source.source} (Page ${source.page_number}) - Confidence: ${(source.score * 100).toFixed(1)}%<br>`;
+                        });
+                        answer += `</div>`;
+                    }
+                    
+                    if (data.confidence > 0) {
+                        answer += `<br><span class="confidence-badge">Overall Confidence: ${(data.confidence * 100).toFixed(1)}%</span>`;
+                    }
+
+                    this.addMessage('assistant', answer);
+                    
+                } catch (error) {
+                    this.addMessage('assistant', `❌ Sorry, I encountered an error: ${error.message}`);
+                } finally {
+                    this.setLoading(false);
+                }
+            }
+
+            addMessage(role, content) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${role}`;
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.innerHTML = content;
+                
+                messageDiv.appendChild(contentDiv);
+                document.getElementById('chat-messages').appendChild(messageDiv);
+                this.scrollToBottom();
+            }
+
+            setLoading(loading) {
+                document.getElementById('send-button').disabled = loading;
+                document.getElementById('typing-indicator').style.display = loading ? 'flex' : 'none';
+                if (loading) {
+                    this.scrollToBottom();
+                }
+            }
+
+            scrollToBottom() {
+                const chatMessages = document.getElementById('chat-messages');
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new MultiPDFKrishnChat();
+        });
+    </script>
+</body>
+</html>
